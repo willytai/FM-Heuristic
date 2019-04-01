@@ -46,12 +46,6 @@ public:
     }
 
     void remove(Cell* c) {
-#ifdef DEBUG_MODE
-        if (!this->check_exists(c)) {
-            cerr << "Cell " << c->_ID << " does not exist in list!!!" << endl;
-            assert(0);
-        }
-#endif
         if (_size == 1) { this->clear(); return; }
         if (c == _head) _head = c->_next;
         if (c->_next) c->_next->_prev = c->_prev;
@@ -85,17 +79,6 @@ public:
         _pick_candidate = _head;
     }
 
-#ifdef DEBUG_MODE
-    bool check_exists(Cell* c) {
-        Cell* tmp = _head;
-        while (tmp) {
-            if (tmp == c) return true;
-            tmp = tmp->_next;
-        }
-        return false;
-    }
-#endif
-
     int Gain() const { if (!_head) return INT_MIN; return _head->_gain; }
     int size() const { return _size; }
 
@@ -103,12 +86,6 @@ public:
         Cell* tmp = _pick_candidate;
         _pick_candidate = _pick_candidate ? _pick_candidate->_next: _pick_candidate;
         return tmp;
-        /* Cell* tmp = _head;
-        while (id && tmp) {
-            --id;
-            tmp = tmp->_next;
-        }
-        return tmp;*/
     }
 
     Group group() const { return _head->_group; }

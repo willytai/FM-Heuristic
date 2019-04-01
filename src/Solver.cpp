@@ -115,9 +115,21 @@ void Solver::initBucketList() {
     _Bucket_A.clear_locked_cells();
     _Bucket_B.clear_locked_cells();
 
-    // resize net distribution
+    // resize net distribution and initialize
+    cerr << "\t> initializing net distribution" << endl;
     _NetADistribution.resize(_numNet+1);
     _NetBDistribution.resize(_numNet+1);
+    for (int netID = 1; netID <= _numNet; ++netID) {
+        int A_count = 0;
+        int B_count = 0;
+        for (auto cell_it = _net_array[netID].begin(); cell_it != _net_array[netID].end(); ++cell_it) {
+            int cellID = *cell_it;
+            if (_cell_ptr[cellID]->_group == A) ++A_count;
+            else ++B_count;
+        }
+        _NetADistribution[netID] = A_count;
+        _NetBDistribution[netID] = B_count;
+    }
 
     // init cell gain, place in the corresponding bucket and set _maxGainPtr
     _maxGainPtr = &_Bucket_A[-_Pmax];
@@ -130,6 +142,17 @@ void Solver::initBucketList() {
 
         for (auto net_it = _cell_array[cellID].begin(); net_it != _cell_array[cellID].end(); ++net_it) {
 
+            int netID = *net_it;
+            if (F == A) {
+                if (_NetADistribution[netID] == 1) ++gain;
+                if (_NetBDistribution[netID] == 0) --gain;
+            }
+            else {
+                if (_NetBDistribution[netID] == 1) ++gain;
+                if (_NetADistribution[netID] == 0) --gain;
+            }
+
+            /*
             // colculate number of cells in F and T respectively
             int netID   = *net_it;
             int F_count = 0;
@@ -140,11 +163,14 @@ void Solver::initBucketList() {
             }
             if (F_count == 1) ++gain;
             if (T_count == 0) --gain;
+            */
 
+            /*
             // init net distribution
             _NetADistribution[netID] = F_count;
             _NetBDistribution[netID] = T_count;
             if (F == B) ::swap(_NetADistribution[netID], _NetBDistribution[netID]);
+            */
         }
         _cell_ptr[cellID]->set_gain(gain);
 
@@ -346,9 +372,6 @@ bool Solver::update_gain() {
             }
         }
     }
-    // _Bucket_A.print();
-    // _Bucket_B.print();
-    // assert(0);
     return this->update_max_gain_pointer();
 }
 
