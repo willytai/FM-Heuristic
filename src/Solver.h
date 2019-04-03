@@ -20,15 +20,17 @@ public:
     void initBucketList();
     void construct_balance_criterion();
     void moveMaxGainCell();
-    void move_max_gain_pointer(Group ref);
-    void update_net_distribution(vector<int>* F, vector<int>* T);
     void apply_change(int k);
-    void assign_basecell(Cell* c, Group g);
     void print_hisotry() const;
     bool update_gain();
     bool update_max_gain_pointer();
     bool compute_max_gain();
     bool balance_checking(Cell* c);
+
+
+    inline void move_max_gain_pointer();
+    inline void update_net_distribution(vector<int>* F, vector<int>* T);
+    inline void assign_basecell(Cell* c, Group g);
 
 #ifdef DEBUG_MODE
     void debug_net_dist() const;
@@ -39,14 +41,13 @@ private:
     vector<vector<int> >    _net_array;
     vector<Cell*>           _cell_ptr;
 
-    Bucket                  _Bucket_A;
-    Bucket                  _Bucket_B;
+    Bucket                  _Bucket;
     Dlist*                  _maxGainPtr;
 
     vector<int>             _NetADistribution;
     vector<int>             _NetBDistribution;
     
-    Cell*                   BaseCell;
+    Cell*                   _BaseCell;
     Group                   _BaseCell_F;
 
     vector<pair<Cell*, int> > _cell_gain_pairs;

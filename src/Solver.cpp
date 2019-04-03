@@ -42,7 +42,7 @@ void Solver::read(char* filename) {
     }
 
     // compute _Pmax
-    cerr << "\t> computing Pmax";
+    cerr << "\t> computing Pmax :";
     for (auto it = _cell_array.begin(); it != _cell_array.end(); ++it) {
         if (_Pmax < (*it).size()) _Pmax = (*it).size();
     }
@@ -51,19 +51,19 @@ void Solver::read(char* filename) {
 
 void Solver::solve() {
     _gain_history.clear();
+    _cell_gain_pairs.clear();
     this->construct_balance_criterion();
     this->initPartition();
     this->initBucketList();
     int iteration = 0;
     while (true) {
         cerr << "[main process, iteration " << ++iteration << "]" << endl;
-        _cell_gain_pairs.clear();
         int step = 0;
+        cerr << "\t> running...";
         while (true) {
-            cerr << "\r\t> step " << ++step << flush;
             this->moveMaxGainCell();
             if (!this->update_gain()) break;
-        } cerr << endl;
+        } cerr << "done" << endl;
         if (!this->compute_max_gain()) break;
     }
     this->print_hisotry();
@@ -80,22 +80,19 @@ void Solver::initPartition() {
     cerr << "[initialzing partition and computing original cutsize]" << endl;
     int half = _numCell / 2;
     _cell_ptr.resize(_numCell+1, NULL);
-    cerr << "\t> creating cell pointers for group A" << endl;
-    for (int i = 1; i <= half; ++i) {
-        _cell_ptr[i] = new Cell(i, A);
-    }
-    cerr << "\t> creating cell pointers for group B" << endl;
-    for (int i = half+1; i <= _numCell; ++i) {
-        _cell_ptr[i] = new Cell(i, B);
+    cerr << "\t> creating cell pointers for group A and B" << endl;
+    for (int i = 1; i <= _numCell; ++i) {
+        if (i&1) _cell_ptr[i] = new Cell(i, A);
+        else     _cell_ptr[i] = new Cell(i, B);
     }
     vector<bool> checker;
     checker.resize(_numNet+1, false);
-    for (int i = 1; i <= half; ++i) {
+    for (int i = 1; i <= _numCell; i+=2) {
         for (auto it = _cell_array[i].begin(); it != _cell_array[i].end(); ++it) {
             checker[*it] = true;
         }
     }
-    for (int i = half+1; i <= _numCell; ++i) {
+    for (int i = 2; i <= _numCell; i+=2) {
         for (auto it = _cell_array[i].begin(); it != _cell_array[i].end(); ++it) {
             if (checker[*it]) {
                 _cutsize += 1;
@@ -110,10 +107,8 @@ void Solver::initBucketList() {
     cerr << endl << "[initialzing bucketlist for group A and B]" << endl;
 
     // resize bucketlist
-    _Bucket_A.set_gain_limit_and_resize(2*_Pmax+1);
-    _Bucket_B.set_gain_limit_and_resize(2*_Pmax+1);
-    _Bucket_A.clear_locked_cells();
-    _Bucket_B.clear_locked_cells();
+    _Bucket.clear();
+    _Bucket.set_gain_limit_and_resize(2*_Pmax+1);
 
     // resize net distribution and initialize
     cerr << "\t> initializing net distribution" << endl;
@@ -131,8 +126,7 @@ void Solver::initBucketList() {
         _NetBDistribution[netID] = B_count;
     }
 
-    // init cell gain, place in the corresponding bucket and set _maxGainPtr
-    _maxGainPtr = &_Bucket_A[-_Pmax];
+    // init cell gain, place in bucket and set _maxGainPtr
     for (int cellID = 1; cellID <= _numCell; ++cellID) {
         cerr << "\r\t> computing gain for cell " << cellID << '/' << _numCell << flush;
         int gain = 0;
@@ -151,119 +145,50 @@ void Solver::initBucketList() {
                 if (_NetBDistribution[netID] == 1) ++gain;
                 if (_NetADistribution[netID] == 0) --gain;
             }
-
-            /*
-            // colculate number of cells in F and T respectively
-            int netID   = *net_it;
-            int F_count = 0;
-            int T_count = 0;
-            for (auto cell_it = _net_array[netID].begin(); cell_it != _net_array[netID].end(); ++cell_it) {
-                if (_cell_ptr[*cell_it]->_group == F) ++F_count;
-                else ++T_count;
-            }
-            if (F_count == 1) ++gain;
-            if (T_count == 0) --gain;
-            */
-
-            /*
-            // init net distribution
-            _NetADistribution[netID] = F_count;
-            _NetBDistribution[netID] = T_count;
-            if (F == B) ::swap(_NetADistribution[netID], _NetBDistribution[netID]);
-            */
         }
         _cell_ptr[cellID]->set_gain(gain);
 
-        // update bucketlist and _maxGainPtr
-        if (F == A) {
-            _Bucket_A.insert(gain, _cell_ptr[cellID]);
-            if (_maxGainPtr->Gain() < gain) {
-                _maxGainPtr = &_Bucket_A[gain];
-            }
-        }
-        else {
-            _Bucket_B.insert(gain, _cell_ptr[cellID]);
-            if (_maxGainPtr->Gain() < gain) {
-                _maxGainPtr = &_Bucket_B[gain];
-            }
-        }
+        // update bucketlist
+        _Bucket.insert(gain, _cell_ptr[cellID]);
     } cerr << endl;
-    cerr << "\t> Initial Distribution: A " << _Bucket_A.size() << ", B " << _Bucket_B.size() << endl;
+    cerr << "\t> Initial Distribution: A " << _Bucket.A_size() << ", B " << _Bucket.B_size() << endl;
+    this->update_max_gain_pointer();
 }
 
 void Solver::moveMaxGainCell() {
     // pick a legal cell
-    cerr << "\tsearching for BaseCell...";
-    this->assign_basecell(_maxGainPtr->pick(), _maxGainPtr->group()); assert(BaseCell);
-    Group ref = BaseCell->_group;
-    int times = 0;
+    // cerr << "\tsearching for BaseCell...";
+    Cell* candidate = _maxGainPtr->pick();
+    this->assign_basecell(candidate, candidate->_group);
     while (true) {
-        ++times;
-        if (!this->balance_checking(BaseCell)) {
+        if (!this->balance_checking(_BaseCell)) {
             // cerr << "\tBaseCell : " << BaseCell->_ID << " with gain " << BaseCell->_gain << " cannot be swapped." << endl;
-            this->assign_basecell(_maxGainPtr->pick(), _maxGainPtr->group());
+            candidate = _maxGainPtr->pick();
         }
         else break;
-        if (!BaseCell) {
-            // cerr << "\tsearching for the second max gain" << endl;
-            this->move_max_gain_pointer(ref);
-            this->assign_basecell(_maxGainPtr->pick(), _maxGainPtr->group());
+        if (!candidate) {
+            this->move_max_gain_pointer();
+            candidate = _maxGainPtr->pick();
         }
+        assert(candidate);
+        this->assign_basecell(candidate, candidate->_group);
     }
     // cerr << "done. " << times << endl;
     // cerr << "Swapping Cell " << BaseCell->_ID << " from group " << BaseCell->_group << " to group " << 1-int(BaseCell->_group) << endl;
-    // remove it from bucket and put into locked group
-    if (BaseCell->_group == A) {
-        _Bucket_A.remove(BaseCell->_gain, BaseCell);
-        _Bucket_B.insert_locked(BaseCell);
-    }
-    if (BaseCell->_group == B) {
-        _Bucket_B.remove(BaseCell->_gain, BaseCell);
-        _Bucket_A.insert_locked(BaseCell);
-    }
+    // remove it from bucket
+    _Bucket.remove(_BaseCell->_gain, _BaseCell);
     // lock and change group
-    BaseCell->lock();
-    BaseCell->change_group();
+    _BaseCell->lock();
+    _BaseCell->change_group();
+    // put into locked group
+    _Bucket.insert_locked(_BaseCell);
     // record
-    _cell_gain_pairs.push_back(pair<Cell*,int>(BaseCell, BaseCell->_gain));
-}
-
-void Solver::move_max_gain_pointer(Group ref) {
-    int curGain = _maxGainPtr->Gain();
-    if (_maxGainPtr->group() == A && _Bucket_B[curGain].size() && _maxGainPtr->group() == ref) {
-        _maxGainPtr = &_Bucket_B[curGain];
-        _maxGainPtr->reset_pick_candidate();
-        return;
-    }
-    if (_maxGainPtr->group() == B && _Bucket_A[curGain].size() && _maxGainPtr->group() == ref) {
-        _maxGainPtr = &_Bucket_A[curGain];
-        _maxGainPtr->reset_pick_candidate();
-        return;
-    }
-    while (true) {
-        --curGain;
-        /* if (curGain < -_Pmax) {
-            cerr << "something wrong!!!!!!" << endl;
-            assert(0);
-        }*/
-        if (_Bucket_A[curGain].size()) {
-            _maxGainPtr = &_Bucket_A[curGain];
-            _maxGainPtr->reset_pick_candidate();
-            return;
-        }
-        if (_Bucket_B[curGain].size()) {
-            _maxGainPtr = &_Bucket_B[curGain];
-            _maxGainPtr->reset_pick_candidate();
-            return;
-        }
-    }
+    _cell_gain_pairs.push_back(pair<Cell*,int>(_BaseCell, _BaseCell->_gain));
 }
 
 bool Solver::balance_checking(Cell* c) {
-    // assert(c);
-    // assert(!c->_locked);
-    int A_size = _Bucket_A.size();
-    int B_size = _Bucket_B.size();
+    int A_size = _Bucket.A_size();
+    int B_size = _Bucket.B_size();
     if (c->_group == A) {
         --A_size;
         ++B_size;
@@ -272,10 +197,7 @@ bool Solver::balance_checking(Cell* c) {
         ++A_size;
         --B_size;
     }
-    if (A_size < _min_limit || A_size > _max_limit) {
-        // cerr << "balance checking failed. Cell " << c->_ID << " swapped to group " << 1-int(c->_group) << " makes the size of group 0 illegal (" << A_size << " is not in the range of [" << _min_limit << ", " << _max_limit << "]" << endl;
-        return false;
-    }
+    if (A_size < _min_limit || A_size > _max_limit) return false;
     else return true;
 }
 
@@ -284,7 +206,7 @@ bool Solver::update_gain() {
     vector<int>* T_distribution = &_NetBDistribution;
     if (_BaseCell_F == B) ::swap(F_distribution, T_distribution);
 
-    for (auto net_it = _cell_array[BaseCell->_ID].begin(); net_it != _cell_array[BaseCell->_ID].end(); ++net_it) {
+    for (auto net_it = _cell_array[_BaseCell->_ID].begin(); net_it != _cell_array[_BaseCell->_ID].end(); ++net_it) {
         int netID = *net_it;
         if (T_distribution->at(netID) == 0) { // increment gains of all free cells on netID
             for (auto cell_it = _net_array[netID].begin(); cell_it != _net_array[netID].end(); ++cell_it) {
@@ -292,16 +214,9 @@ bool Solver::update_gain() {
                 if (_cell_ptr[cellID]->_locked) continue;
                 else { // remember to update bucketlist
                     // cerr << "cell " << cellID << " incremented due to T(all)" << endl;
-                    if (_cell_ptr[cellID]->_group == A) {
-                        _Bucket_A.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                        _cell_ptr[cellID]->increment_gain();
-                        _Bucket_A.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                    }
-                    else {
-                        _Bucket_B.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                        _cell_ptr[cellID]->increment_gain();
-                        _Bucket_B.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                    }
+                    _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
+                    _cell_ptr[cellID]->increment_gain();
+                    _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
                 }
             }
         }
@@ -311,27 +226,15 @@ bool Solver::update_gain() {
                 if (_cell_ptr[cellID]->_locked || _cell_ptr[cellID]->_group == _BaseCell_F) continue;
                 else { // remember to update bucketlist
                     // cerr << "cell " << cellID << " decremented due to T(only T)" << endl;
-                    if (_cell_ptr[cellID]->_group == A) {
-                        _Bucket_A.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                        _cell_ptr[cellID]->decrement_gain();
-                        _Bucket_A.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                    }
-                    else {
-                        _Bucket_B.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                        _cell_ptr[cellID]->decrement_gain();
-                        _Bucket_B.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                    }
+                    _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
+                    _cell_ptr[cellID]->decrement_gain();
+                    _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
                 }
             }
         }
     }
-    // cerr << "before" << endl;
-    // this->debug_net_dist();
     this->update_net_distribution(F_distribution, T_distribution);
-    // cerr << "after" << endl;
-    // this->debug_net_dist();
-    // assert(0);
-    for (auto net_it = _cell_array[BaseCell->_ID].begin(); net_it != _cell_array[BaseCell->_ID].end(); ++net_it) {
+    for (auto net_it = _cell_array[_BaseCell->_ID].begin(); net_it != _cell_array[_BaseCell->_ID].end(); ++net_it) {
         int netID = *net_it;
         if (F_distribution->at(netID) == 0) { // decrement gains of all free cells on netID
             for (auto cell_it = _net_array[netID].begin(); cell_it != _net_array[netID].end(); ++cell_it) {
@@ -339,16 +242,9 @@ bool Solver::update_gain() {
                 if (_cell_ptr[cellID]->_locked) continue;
                 else { // remember to update bucketlist
                     // cerr << "cell " << cellID << " decremented due to F'(all)" << endl;
-                    if (_cell_ptr[cellID]->_group == A) {
-                        _Bucket_A.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                        _cell_ptr[cellID]->decrement_gain();
-                        _Bucket_A.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                    }
-                    else {
-                        _Bucket_B.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                        _cell_ptr[cellID]->decrement_gain();
-                        _Bucket_B.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                    }
+                    _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
+                    _cell_ptr[cellID]->decrement_gain();
+                    _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
                 }
             }
         }
@@ -358,16 +254,9 @@ bool Solver::update_gain() {
                 if (_cell_ptr[cellID]->_locked || _cell_ptr[cellID]->_group != _BaseCell_F) continue;
                 else { // remember to update bucketlist
                     // cerr << "cell " << cellID << " incremented due to F'(only F)" << endl;
-                    if (_cell_ptr[cellID]->_group == A) {
-                        _Bucket_A.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                        _cell_ptr[cellID]->increment_gain();
-                        _Bucket_A.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                    }
-                    else {
-                        _Bucket_B.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                        _cell_ptr[cellID]->increment_gain();
-                        _Bucket_B.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                    }
+                    _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
+                    _cell_ptr[cellID]->increment_gain();
+                    _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
                 }
             }
         }
@@ -375,28 +264,14 @@ bool Solver::update_gain() {
     return this->update_max_gain_pointer();
 }
 
-void Solver::update_net_distribution(vector<int>* F, vector<int>* T) {
-    // update distribution for every net on BaseCell
-    for (auto net_it = _cell_array[BaseCell->_ID].begin(); net_it != _cell_array[BaseCell->_ID].end(); ++net_it) {
-        --(F->at(*net_it));
-        ++(T->at(*net_it));
-    }
-}
-
 bool Solver::update_max_gain_pointer() {
     for (int gain = _Pmax; gain >= -_Pmax; --gain) {
-        if (_Bucket_A[gain].size()) {
-            _maxGainPtr = &_Bucket_A[gain];
-            _maxGainPtr->reset_pick_candidate();
-            return true;
-        }
-        if (_Bucket_B[gain].size()) {
-            _maxGainPtr = &_Bucket_B[gain];
+        if (_Bucket[gain].size()) {
+            _maxGainPtr = &_Bucket[gain];
             _maxGainPtr->reset_pick_candidate();
             return true;
         }
     }
-    // cerr << "\tno more cells left in both buckets, process terminating." << endl;
     return false;
 }
 
@@ -404,6 +279,7 @@ bool Solver::compute_max_gain() {
     int gain = 0;
     int max_gain = 0;
     int k = 0;
+    assert(_cell_gain_pairs.size() == _numCell);
     for (unsigned int i = 0; i < _cell_gain_pairs.size(); ++i) {
         gain += _cell_gain_pairs[i].second;
         if (max_gain < gain) {
@@ -413,25 +289,30 @@ bool Solver::compute_max_gain() {
     }
     _gain_history.push_back(max_gain);
     if (max_gain > 0) {
-        cerr << "\t> Iteration Gain: " << max_gain << endl;
-        this->apply_change(k);
         _cutsize -= max_gain;
+        cerr << "\t> Iteration Gain: " << max_gain;
+        cerr << " with K = " << k+1 << endl;
+        cerr << "\t> Current cut size: " << _cutsize << endl;
+        this->apply_change(k);
         return true;
     }
-    else return false;
+    else {
+        cerr << "\t> Iteration Gain is 0, terminating..." << endl;
+        return false;
+    }
 }
 
 void Solver::apply_change(int k) {
     cerr << "\t> swapping cells" << endl;
+    cerr << "\t>";
+    for (unsigned int i = 1; i <= k; ++i) {
+        cerr << ' ' << _cell_gain_pairs[i].first->_ID;
+    } cerr << endl;
     for (unsigned int i = k+1; i < _cell_gain_pairs.size(); ++i) {
         _cell_gain_pairs[i].first->change_group();
     } cerr << endl;
+    _cell_gain_pairs.clear();
     this->initBucketList();
-}
-
-void Solver::assign_basecell(Cell* c, Group g) {
-    BaseCell = c;
-    _BaseCell_F = g;
 }
 
 void Solver::print_hisotry() const {
@@ -444,10 +325,31 @@ void Solver::print_hisotry() const {
 void Solver::dump(ostream& os) {
     cerr << "[Dumping result]" << endl;
     os << "Cutsize = " << _cutsize << endl;
-    os << "G1 " << _Bucket_A.size() << endl;
-    _Bucket_A.dump(os);
-    os << "G2 " << _Bucket_B.size() << endl;
-    _Bucket_B.dump(os);
+    os << "G1 " << _Bucket.A_size() << endl;
+    _Bucket.dumpA(os);
+    os << "G2 " << _Bucket.B_size() << endl;
+    _Bucket.dumpB(os);
+}
+
+inline void Solver::move_max_gain_pointer() {
+    int curGain = _maxGainPtr->Gain();
+    // assert(curGain >= -_Pmax && curGain <= _Pmax);
+    while (!_Bucket[--curGain].size()) {}
+    _maxGainPtr = &_Bucket[curGain];
+    _maxGainPtr->reset_pick_candidate();
+}
+
+inline void Solver::update_net_distribution(vector<int>* F, vector<int>* T) {
+    // update distribution for every net on BaseCell
+    for (auto net_it = _cell_array[_BaseCell->_ID].begin(); net_it != _cell_array[_BaseCell->_ID].end(); ++net_it) {
+        --(F->at(*net_it));
+        ++(T->at(*net_it));
+    }
+}
+
+inline void Solver::assign_basecell(Cell* c, Group g) {
+    _BaseCell = c;
+    _BaseCell_F = g;
 }
 
 #ifdef DEBUG_MODE

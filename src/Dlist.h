@@ -32,8 +32,10 @@ struct Cell {
 
 class Dlist {
 public:
-    Dlist() : _size(0) { _head = NULL; }
+    Dlist() : _size(0), _gain(INT_MAX) { _head = NULL; }
     ~Dlist() {}
+
+    void setGain(int g) { _gain = g; }
 
     void insert(Cell* c) {
         if (!_head) { this->init(c); return; }
@@ -79,7 +81,7 @@ public:
         _pick_candidate = _head;
     }
 
-    int Gain() const { if (!_head) return INT_MIN; return _head->_gain; }
+    int Gain() const { return _gain; }
     int size() const { return _size; }
 
     Cell* pick() {
@@ -94,17 +96,23 @@ private:
     Cell*   _head;
     Cell*   _pick_candidate;
     int     _size;
+    int     _gain;
 };
 
 class Bucket{
 public:
-    Bucket() : _size(0) {}
+    Bucket() : _size(0), _A_size(0), _B_size(0) {}
     ~Bucket() {}
 
-    void set_gain_limit_and_resize(int limit) { _Pmax = limit; _data.resize(2*limit+1); }
-    void insert(int gain, Cell* c) { (*this)[gain].insert(c); ++_size; }
-    void remove(int gain, Cell* c) { (*this)[gain].remove(c); --_size; }
-    void insert_locked(Cell* c) { ++_size; _locked_cells.push_back(c); }
+    void insert(int gain, Cell* c) { (*this)[gain].insert(c); ++_size; if (c->_group == A) ++_A_size; else ++_B_size; }
+    void remove(int gain, Cell* c) { (*this)[gain].remove(c); --_size; if (c->_group == A) --_A_size; else --_B_size; }
+    void insert_locked(Cell* c) { ++_size; _locked_cells.push_back(c); if (c->_group == A) ++_A_size; else ++_B_size; }
+
+    void set_gain_limit_and_resize(int limit) {
+        _Pmax = limit;
+        _data.resize(2*limit+1);
+        for (unsigned int i = 0; i < _data.size(); ++i) _data[i].setGain(i-limit);
+    }
 
     void clear_locked_cells() {
         for (auto it = _locked_cells.begin(); it != _locked_cells.end(); ++it) (*it)->unlock();
@@ -112,16 +120,36 @@ public:
         _locked_cells.clear();
     }
 
-    void dump(ostream& os) {
+    void dumpA(ostream& os) {
         ::sort(_locked_cells.begin(), _locked_cells.end());
         for (auto it = _locked_cells.begin(); it != _locked_cells.end(); ++it) {
+            if ((*it)->_group == B) continue;
             os << 'c' << (*it)->_ID << ' ';
         }
         os << ';' << endl;
     }
 
+    void dumpB(ostream& os) {
+        for (auto it = _locked_cells.begin(); it != _locked_cells.end(); ++it) {
+            if ((*it)->_group == A) continue;
+            os << 'c' << (*it)->_ID << ' ';
+        }
+        os << ';' << endl;
+    }
 
-    size_t size() const { return _size; }
+    void clear() {
+        _data.clear();
+        _locked_cells.clear();
+        _size = _A_size = _B_size = 0;
+    }
+
+    bool no_more_free_cells() const {
+        return _locked_cells.size() == _size;
+    }
+
+    size_t size()   const { return _size; }
+    size_t A_size() const { return _A_size; }
+    size_t B_size() const { return _B_size; }
 
     Dlist& operator[] (int gain) { assert(gain >= -_Pmax && gain <= _Pmax); return _data[gain+_Pmax]; }
     Dlist operator[] (int gain) const { assert(gain >= -_Pmax && gain <= _Pmax); return _data[gain+_Pmax]; }
@@ -141,6 +169,8 @@ private:
     vector<Cell*>   _locked_cells;
     int             _Pmax;
     size_t          _size;
+    size_t          _A_size;
+    size_t          _B_size;
 };
 
 #endif /* DLIST_H */
