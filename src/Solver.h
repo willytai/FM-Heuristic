@@ -21,6 +21,7 @@ public:
     void construct_balance_criterion();
     void moveMaxGainCell();
     void apply_change(int k);
+    void update_cutsize(const int& gain);
     void print_hisotry() const;
     bool update_gain();
     bool update_max_gain_pointer();

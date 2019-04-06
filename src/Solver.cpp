@@ -9,7 +9,7 @@
 using namespace std;
 
 void Solver::read(char* filename) {
-    cerr << "[constructing Cell array and Net array]" << endl;
+    cerr << "[constructing Cell array and Net array from " << filename << "]" << endl;
     ifstream file(filename);
     string buff;
     while (getline(file, buff)) {
@@ -88,11 +88,13 @@ void Solver::initPartition() {
     vector<bool> checker;
     checker.resize(_numNet+1, false);
     for (int i = 1; i <= _numCell; i+=2) {
+        assert(_cell_ptr[i]->_group == A);
         for (auto it = _cell_array[i].begin(); it != _cell_array[i].end(); ++it) {
             checker[*it] = true;
         }
     }
     for (int i = 2; i <= _numCell; i+=2) {
+        assert(_cell_ptr[i]->_group == B);
         for (auto it = _cell_array[i].begin(); it != _cell_array[i].end(); ++it) {
             if (checker[*it]) {
                 _cutsize += 1;
@@ -202,65 +204,61 @@ bool Solver::balance_checking(Cell* c) {
 }
 
 bool Solver::update_gain() {
+    // cerr << "[before update]" << endl;
+    // this->debug_net_dist();
+    // _Bucket.print();
+
     vector<int>* F_distribution = &_NetADistribution;
     vector<int>* T_distribution = &_NetBDistribution;
     if (_BaseCell_F == B) ::swap(F_distribution, T_distribution);
 
     for (auto net_it = _cell_array[_BaseCell->_ID].begin(); net_it != _cell_array[_BaseCell->_ID].end(); ++net_it) {
         int netID = *net_it;
-        if (T_distribution->at(netID) == 0) { // increment gains of all free cells on netID
-            for (auto cell_it = _net_array[netID].begin(); cell_it != _net_array[netID].end(); ++cell_it) {
-                int cellID = *cell_it;
-                if (_cell_ptr[cellID]->_locked) continue;
-                else { // remember to update bucketlist
-                    // cerr << "cell " << cellID << " incremented due to T(all)" << endl;
-                    _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                    _cell_ptr[cellID]->increment_gain();
-                    _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                }
+        for (auto cell_it = _net_array[netID].begin(); cell_it != _net_array[netID].end(); ++cell_it) {
+            if (_cell_ptr[*cell_it]->_locked) continue;
+            int cellID = *cell_it;
+            // increment gains of all free cells on netID
+            if (T_distribution->at(netID) == 0) {
+                // cerr << "gain increased on cell " << cellID << " (net " << netID << "'s T = 0)" << endl;
+                _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
+                _cell_ptr[cellID]->increment_gain();
+                _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
             }
-        }
-        else if (T_distribution->at(netID) == 1) { // decrement gains of the only T cell on netID
-            for (auto cell_it = _net_array[netID].begin(); cell_it != _net_array[netID].end(); ++cell_it) {
-                int cellID = *cell_it;
-                if (_cell_ptr[cellID]->_locked || _cell_ptr[cellID]->_group == _BaseCell_F) continue;
-                else { // remember to update bucketlist
-                    // cerr << "cell " << cellID << " decremented due to T(only T)" << endl;
-                    _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                    _cell_ptr[cellID]->decrement_gain();
-                    _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                }
+            // decrement gains of free cells in T on netID
+            if (T_distribution->at(netID) == 1 && _cell_ptr[cellID]->_group != _BaseCell_F) {
+                // cerr << "gain decreased on cell " << cellID << " (net " << netID << "'s T = 1)" << endl;
+                _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
+                _cell_ptr[cellID]->decrement_gain();
+                _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
             }
         }
     }
     this->update_net_distribution(F_distribution, T_distribution);
     for (auto net_it = _cell_array[_BaseCell->_ID].begin(); net_it != _cell_array[_BaseCell->_ID].end(); ++net_it) {
         int netID = *net_it;
-        if (F_distribution->at(netID) == 0) { // decrement gains of all free cells on netID
-            for (auto cell_it = _net_array[netID].begin(); cell_it != _net_array[netID].end(); ++cell_it) {
-                int cellID = *cell_it;
-                if (_cell_ptr[cellID]->_locked) continue;
-                else { // remember to update bucketlist
-                    // cerr << "cell " << cellID << " decremented due to F'(all)" << endl;
-                    _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                    _cell_ptr[cellID]->decrement_gain();
-                    _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                }
+        for (auto cell_it = _net_array[netID].begin(); cell_it != _net_array[netID].end(); ++cell_it) {
+            if (_cell_ptr[*cell_it]->_locked) continue;
+            int cellID = *cell_it;
+            // decrement gains of free cells in F on netID
+            if (F_distribution->at(netID) == 0) {
+                // cerr << "gain decreased on cell " << cellID << " (net " << netID << "'s F' = 0)" << endl;
+                _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
+                _cell_ptr[cellID]->decrement_gain();
+                _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
             }
-        }
-        else if (F_distribution->at(netID) == 1) { // increment gains of the only F cell on netID
-            for (auto cell_it = _net_array[netID].begin(); cell_it != _net_array[netID].end(); ++cell_it) {
-                int cellID = *cell_it;
-                if (_cell_ptr[cellID]->_locked || _cell_ptr[cellID]->_group != _BaseCell_F) continue;
-                else { // remember to update bucketlist
-                    // cerr << "cell " << cellID << " incremented due to F'(only F)" << endl;
-                    _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                    _cell_ptr[cellID]->increment_gain();
-                    _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
-                }
+            // increment gains of all free cells on netID
+            if (F_distribution->at(netID) == 1 && _cell_ptr[cellID]->_group == _BaseCell_F) {
+                // cerr << "gain increased on cell " << cellID << " (net " << netID << "'s F' = 1)" << endl;
+                _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
+                _cell_ptr[cellID]->increment_gain();
+                _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
             }
         }
     }
+    // cerr << "[after update]" << endl;
+    // this->debug_net_dist();
+    // _Bucket.print();
+
     return this->update_max_gain_pointer();
 }
 
@@ -289,7 +287,7 @@ bool Solver::compute_max_gain() {
     }
     _gain_history.push_back(max_gain);
     if (max_gain > 0) {
-        _cutsize -= max_gain;
+        this->update_cutsize(max_gain);
         cerr << "\t> Iteration Gain: " << max_gain;
         cerr << " with K = " << k+1 << endl;
         cerr << "\t> Current cut size: " << _cutsize << endl;
@@ -302,12 +300,17 @@ bool Solver::compute_max_gain() {
     }
 }
 
+void Solver::update_cutsize(const int& gain) {
+    _cutsize -= gain;
+    assert(_cutsize >= 0);
+}
+
 void Solver::apply_change(int k) {
     cerr << "\t> swapping cells" << endl;
-    cerr << "\t>";
-    for (unsigned int i = 1; i <= k; ++i) {
-        cerr << ' ' << _cell_gain_pairs[i].first->_ID;
-    } cerr << endl;
+    // cerr << "\t>";
+    // for (unsigned int i = 1; i <= k; ++i) {
+    //     cerr << ' ' << _cell_gain_pairs[i].first->_ID;
+    // } cerr << endl;
     for (unsigned int i = k+1; i < _cell_gain_pairs.size(); ++i) {
         _cell_gain_pairs[i].first->change_group();
     } cerr << endl;
