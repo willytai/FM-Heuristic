@@ -9,14 +9,14 @@
 using namespace std;
 
 void Solver::read(char* filename) {
-    // cerr << "[constructing Cell array and Net array from " << filename << "]" << endl;
+    cerr << "[constructing Cell array and Net array from " << filename << "]" << endl;
     ifstream file(filename);
     string buff;
     while (getline(file, buff)) {
         if (!buff.length()) break;
         if (!_balance_degree) {
             _balance_degree = stof(buff);
-            // cerr << "\t> setting balance degree to " << _balance_degree << endl;
+            cerr << "\t> setting balance degree to " << _balance_degree << endl;
             continue;
         }
         istringstream ss(buff);
@@ -42,11 +42,9 @@ void Solver::read(char* filename) {
     }
 
     // compute _Pmax
-    // cerr << "\t> computing Pmax :";
     for (auto it = _cell_array.begin(); it != _cell_array.end(); ++it) {
         if (_Pmax < (*it).size()) _Pmax = (*it).size();
     }
-    // cerr << " " << _Pmax << endl;
 }
 
 void Solver::solve() {
@@ -56,32 +54,28 @@ void Solver::solve() {
     this->initPartition();
     this->initBucketList();
     int iteration = 0;
+    cerr << "[Solving]" << endl;
     while (true) {
-        cout << "iteration " << iteration << " gain ";
-        // cerr << "[main process, iteration " << ++iteration << "]" << endl;
-        int step = 0;
-        // cerr << "\t> running...";
+        cout << "\t> iteration " << ++iteration << " gain ";
         while (true) {
             this->moveMaxGainCell();
             if (!this->update_gain()) break;
-        } // cerr << "done" << endl;
+        }
         if (!this->compute_max_gain()) break;
     }
-    this->print_hisotry();
 }
 
 void Solver::construct_balance_criterion() {
-    // cerr << "[constructing balance criterion]" << endl;
+    cerr << "[constructing balance criterion]" << endl;
     _min_limit = (1 - _balance_degree) / 2 * _numCell;
     _max_limit = (1 + _balance_degree) / 2 * _numCell;
-    // cerr << "\t> balance range [" << _min_limit << ", " << _max_limit << "]" << endl;
+    cerr << "\t> balance range [" << _min_limit << ", " << _max_limit << "]" << endl;
 }
 
 void Solver::initPartition() {
-    // cerr << "[initialzing partition and computing original cutsize]" << endl;
-    int half = _numCell / 2;
+    cerr << "[initialzing partition and computing original cutsize]" << endl;
     _cell_ptr.resize(_numCell+1, NULL);
-    // cerr << "\t> creating cell pointers for group A and B" << endl;
+    cerr << "\t> creating cell pointers for group A and B" << endl;
     for (int i = 1; i <= _numCell; ++i) {
         if (i&1) _cell_ptr[i] = new Cell(i, A);
         else     _cell_ptr[i] = new Cell(i, B);
@@ -103,18 +97,16 @@ void Solver::initPartition() {
             }
         }
     }
-    // cerr << "\t> initial cutsize: " << _cutsize << endl;
+    cerr << "\t> initial cutsize: " << _cutsize << endl;
 }
 
 void Solver::initBucketList() {
-    // cerr << endl << "[initialzing bucketlist for group A and B]" << endl;
 
     // resize bucketlist
     _Bucket.clear();
     _Bucket.set_gain_limit_and_resize(2*_Pmax+1);
 
     // resize net distribution and initialize
-    // cerr << "\t> initializing net distribution" << endl;
     _NetADistribution.resize(_numNet+1);
     _NetBDistribution.resize(_numNet+1);
     for (int netID = 1; netID <= _numNet; ++netID) {
@@ -131,7 +123,6 @@ void Solver::initBucketList() {
 
     // init cell gain, place in bucket and set _maxGainPtr
     for (int cellID = 1; cellID <= _numCell; ++cellID) {
-        // cerr << "\r\t> computing gain for cell " << cellID << '/' << _numCell << flush;
         int gain = 0;
 
         // clearify From Block
@@ -153,21 +144,16 @@ void Solver::initBucketList() {
 
         // update bucketlist
         _Bucket.insert(gain, _cell_ptr[cellID]);
-    } // cerr << endl;
-    // cerr << "\t> Initial Distribution: A " << _Bucket.A_size() << ", B " << _Bucket.B_size() << endl;
+    }
     this->update_max_gain_pointer();
 }
 
 void Solver::moveMaxGainCell() {
     // pick a legal cell
-    // cerr << "\tsearching for BaseCell...";
     Cell* candidate = _maxGainPtr->pick();
     this->assign_basecell(candidate, candidate->_group);
     while (true) {
-        if (!this->balance_checking(_BaseCell)) {
-            // cerr << "\tBaseCell : " << BaseCell->_ID << " with gain " << BaseCell->_gain << " cannot be swapped." << endl;
-            candidate = _maxGainPtr->pick();
-        }
+        if (!this->balance_checking(_BaseCell)) candidate = _maxGainPtr->pick();
         else break;
         if (!candidate) {
             this->move_max_gain_pointer();
@@ -176,8 +162,6 @@ void Solver::moveMaxGainCell() {
         assert(candidate);
         this->assign_basecell(candidate, candidate->_group);
     }
-    // cerr << "done. " << times << endl;
-    // cerr << "Swapping Cell " << BaseCell->_ID << " from group " << BaseCell->_group << " to group " << 1-int(BaseCell->_group) << endl;
     // remove it from bucket
     _Bucket.remove(_BaseCell->_gain, _BaseCell);
     // lock and change group
@@ -205,10 +189,6 @@ bool Solver::balance_checking(Cell* c) {
 }
 
 bool Solver::update_gain() {
-    // cerr << "[before update]" << endl;
-    // this->debug_net_dist();
-    // _Bucket.print();
-
     vector<int>* F_distribution = &_NetADistribution;
     vector<int>* T_distribution = &_NetBDistribution;
     if (_BaseCell_F == B) ::swap(F_distribution, T_distribution);
@@ -220,14 +200,12 @@ bool Solver::update_gain() {
             int cellID = *cell_it;
             // increment gains of all free cells on netID
             if (T_distribution->at(netID) == 0) {
-                // cerr << "gain increased on cell " << cellID << " (net " << netID << "'s T = 0)" << endl;
                 _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
                 _cell_ptr[cellID]->increment_gain();
                 _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
             }
             // decrement gains of free cells in T on netID
             if (T_distribution->at(netID) == 1 && _cell_ptr[cellID]->_group != _BaseCell_F) {
-                // cerr << "gain decreased on cell " << cellID << " (net " << netID << "'s T = 1)" << endl;
                 _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
                 _cell_ptr[cellID]->decrement_gain();
                 _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
@@ -242,24 +220,18 @@ bool Solver::update_gain() {
             int cellID = *cell_it;
             // decrement gains of free cells in F on netID
             if (F_distribution->at(netID) == 0) {
-                // cerr << "gain decreased on cell " << cellID << " (net " << netID << "'s F' = 0)" << endl;
                 _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
                 _cell_ptr[cellID]->decrement_gain();
                 _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
             }
             // increment gains of all free cells on netID
             if (F_distribution->at(netID) == 1 && _cell_ptr[cellID]->_group == _BaseCell_F) {
-                // cerr << "gain increased on cell " << cellID << " (net " << netID << "'s F' = 1)" << endl;
                 _Bucket.remove(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
                 _cell_ptr[cellID]->increment_gain();
                 _Bucket.insert(_cell_ptr[cellID]->_gain, _cell_ptr[cellID]);
             }
         }
     }
-    // cerr << "[after update]" << endl;
-    // this->debug_net_dist();
-    // _Bucket.print();
-
     return this->update_max_gain_pointer();
 }
 
@@ -287,17 +259,15 @@ bool Solver::compute_max_gain() {
         }
     }
     _gain_history.push_back(max_gain);
-    if (max_gain > 0 && k < _cell_gain_pairs.size()) {
+    if (max_gain > 0) {
+        assert(k < _cell_gain_pairs.size()-1);
         this->update_cutsize(max_gain);
-        // cerr << "\t> Iteration Gain: " << max_gain;
-        // cerr << " with K = " << k+1 << endl;
-        // cerr << "\t> Current cut size: " << _cutsize << endl;
         this->apply_change(k);
         cout << max_gain << endl;
         return true;
     }
     else {
-        // cerr << "\t> Iteration Gain is 0, terminating..." << endl;
+        cout << "0" << endl;
         return false;
     }
 }
@@ -308,21 +278,20 @@ void Solver::update_cutsize(const int& gain) {
 }
 
 void Solver::apply_change(int k) {
-    // cerr << "\t> swapping and unlocking cells" << endl;
-    
     // unlock all the cells
-    for (unsigned int i = 1; i <= k; ++i) {
+    for (int i = 1; i <= k; ++i) {
         _cell_gain_pairs[i].first->unlock();
     }
     for (unsigned int i = k+1; i < _cell_gain_pairs.size(); ++i) {
         _cell_gain_pairs[i].first->unlock();
         _cell_gain_pairs[i].first->change_group();
-    } // cerr << endl;
+    }
     _cell_gain_pairs.clear();
     this->initBucketList();
 }
 
 void Solver::print_hisotry() const {
+    return;
     // cerr << endl << "[Gain History]" << endl;
     for (unsigned int i = 0; i < _gain_history.size(); ++i) {
         // cerr << "\t> Iteration " << i+1 << ", Gain " << _gain_history[i] << endl;
@@ -330,7 +299,7 @@ void Solver::print_hisotry() const {
 }
 
 void Solver::dump(ostream& os) {
-    // cerr << "[Dumping result]" << endl;
+    cerr << "[Dumping result]" << endl;
     os << "Cutsize = " << _cutsize << endl;
     os << "G1 " << _Bucket.A_size() << endl;
     _Bucket.dumpA(os);
