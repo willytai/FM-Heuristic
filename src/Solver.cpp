@@ -307,10 +307,10 @@ void Solver::update_cutsize(const int& gain) {
 
 void Solver::apply_change(int k) {
     cerr << "\t> swapping cells" << endl;
-    // cerr << "\t>";
-    // for (unsigned int i = 1; i <= k; ++i) {
-    //     cerr << ' ' << _cell_gain_pairs[i].first->_ID;
-    // } cerr << endl;
+    cerr << "\t>";
+    for (unsigned int i = 1; i <= k; ++i) {
+        cerr << ' ' << _cell_gain_pairs[i].first->_ID;
+    } cerr << endl;
     for (unsigned int i = k+1; i < _cell_gain_pairs.size(); ++i) {
         _cell_gain_pairs[i].first->change_group();
     } cerr << endl;
