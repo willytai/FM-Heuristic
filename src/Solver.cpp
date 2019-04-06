@@ -306,12 +306,14 @@ void Solver::update_cutsize(const int& gain) {
 }
 
 void Solver::apply_change(int k) {
-    cerr << "\t> swapping cells" << endl;
-    cerr << "\t>";
+    cerr << "\t> swapping and unlocking cells" << endl;
+    
+    // unlock all the cells
     for (unsigned int i = 1; i <= k; ++i) {
-        cerr << ' ' << _cell_gain_pairs[i].first->_ID;
-    } cerr << endl;
+        _cell_gain_pairs[i].first->unlock();
+    }
     for (unsigned int i = k+1; i < _cell_gain_pairs.size(); ++i) {
+        _cell_gain_pairs[i].first->unlock();
         _cell_gain_pairs[i].first->change_group();
     } cerr << endl;
     _cell_gain_pairs.clear();

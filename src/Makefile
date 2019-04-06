@@ -5,8 +5,8 @@ COBJS     = $(addsuffix .o, $(basename $(CSRCS)))
 CXX       = g++
 ECHO      = /bin/echo
 
-CFLAGS    = -O3 -Wall -std=c++11
 CFLAGS    = -g -Wall -std=c++11 -DDEBUG_MODE
+CFLAGS    = -O3 -Wall -std=c++11
 
 EXEC      = fm
 
