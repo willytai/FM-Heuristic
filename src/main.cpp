@@ -16,6 +16,9 @@ int main(int argc, char *argv[]) {
     ofstream file(argv[2]);
     Solver* solver = new Solver();
     solver->read(argv[1]);
+    solver->debug_dump(file);
+    return 0;
+
     solver->solve();
     solver->dump(file);
     usage.report(1, 1);

@@ -33,6 +33,13 @@ void Solver::read(char* filename) {
             if (temp[0] == 'c') curCellID = stoi(temp.substr(1,temp.size()-1));
             if (_cell_array.size() < size_t(curCellID + 1)) _cell_array.resize(curCellID+1);
             if (_net_array.size() < size_t(curNetID + 1)) _net_array.resize(curNetID+1);
+
+            if (this->net_in_cell_array(curCellID, curNetID)) {
+                continue;
+                cerr << "repeat cell" << endl;
+                assert(0);
+            }
+
             _cell_array[curCellID].push_back(curNetID);
             _net_array[curNetID].push_back(curCellID);
 
@@ -45,6 +52,12 @@ void Solver::read(char* filename) {
     for (auto it = _cell_array.begin(); it != _cell_array.end(); ++it) {
         if (_Pmax < (*it).size()) _Pmax = (*it).size();
     }
+}
+
+void Solver::debug_dump(ostream& os) {
+    this->initPartition();
+    for (int i = 1; i <= _numCell; ++i) _Bucket.lock_insert(_cell_ptr[i]);
+    this->dump(os);
 }
 
 void Solver::solve() {
@@ -328,6 +341,13 @@ inline void Solver::assign_basecell(Cell* c, Group g) {
     _BaseCell_F = g;
 }
 
+bool Solver::net_in_cell_array(int curCellID, int curNetID) {
+    for (auto it = _cell_array[curCellID].begin(); it != _cell_array[curCellID].end(); ++it) {
+        if (*it == curNetID) return true;
+    }
+    return false;
+}
+
 #ifdef DEBUG_MODE
 void Solver::debug_net_dist() const {
     const vector<int>* F = &_NetADistribution;
@@ -339,3 +359,4 @@ void Solver::debug_net_dist() const {
     }
 }
 #endif
+

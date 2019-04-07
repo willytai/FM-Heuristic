@@ -164,6 +164,12 @@ public:
         cerr << endl;
     }
 
+    void lock_insert(Cell* c) {
+        _locked_cells.push_back(c);
+        if (c->_group == A) _A_size++;
+        else _B_size++;
+    }
+
 private:
     vector<Dlist>   _data;
     vector<Cell*>   _locked_cells;

@@ -15,6 +15,7 @@ public:
     void read(char* filename);
     void solve();
     void dump(ostream& os);
+    void debug_dump(ostream& os);
 
     void initPartition();
     void initBucketList();
@@ -32,6 +33,8 @@ public:
     inline void move_max_gain_pointer();
     inline void update_net_distribution(vector<int>* F, vector<int>* T);
     inline void assign_basecell(Cell* c, Group g);
+
+    bool net_in_cell_array(int curCellID, int curNetID);
 
 #ifdef DEBUG_MODE
     void debug_net_dist() const;
