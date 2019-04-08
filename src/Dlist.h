@@ -16,6 +16,7 @@ struct Cell {
     ~Cell() {}
 
     void change_group() { if (_group == A) _group = B; else _group = A; }
+    void set_group(Group g) { _group = g; }
     void set_gain(int g) { _gain = g; }
     void lock() { _locked = true; }
     void unlock() { _locked = false; }

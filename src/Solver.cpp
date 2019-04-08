@@ -1,5 +1,6 @@
 #include "Solver.h"
 #include <cassert>
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -31,20 +32,22 @@ void Solver::read(char* filename) {
                 continue;
             }
             if (temp[0] == 'c') curCellID = stoi(temp.substr(1,temp.size()-1));
+
             if (_cell_array.size() < size_t(curCellID + 1)) _cell_array.resize(curCellID+1);
             if (_net_array.size() < size_t(curNetID + 1)) _net_array.resize(curNetID+1);
 
-            if (this->net_in_cell_array(curCellID, curNetID)) {
-                continue;
-                cerr << "repeat cell" << endl;
-                assert(0);
-            }
+            if (this->net_in_cell_array(curCellID, curNetID)) continue;
 
             _cell_array[curCellID].push_back(curNetID);
             _net_array[curNetID].push_back(curCellID);
 
             if (_numCell < curCellID) _numCell = curCellID;
             if (_numNet < curNetID) _numNet = curNetID;
+
+            // create cell pointers here
+            // maybe some ID's are not used
+            if (_cell_ptr.size() < _numCell+1) _cell_ptr.resize(_numCell+1, NULL);
+            _cell_ptr[curCellID] = new Cell(curCellID, A);
         }
     }
 
@@ -69,7 +72,7 @@ void Solver::solve() {
     int iteration = 0;
     cerr << "[Solving]" << endl;
     while (true) {
-        cout << "\t> iteration " << ++iteration << " gain ";
+        cout << "\t> iteration " << setw(3) << right << ++iteration << " -> gain ";
         while (true) {
             this->moveMaxGainCell();
             if (!this->update_gain()) break;
@@ -86,27 +89,26 @@ void Solver::construct_balance_criterion() {
 }
 
 void Solver::initPartition() {
-    cerr << "[initialzing partition and computing original cutsize]" << endl;
+    cerr << "[initializing partition and computing original cutsize]" << endl;
     _cell_ptr.resize(_numCell+1, NULL);
-    cerr << "\t> creating cell pointers for group A and B" << endl;
+    cerr << "\t> initializing group A and B" << endl;
     for (int i = 1; i <= _numCell; ++i) {
-        if (i&1) _cell_ptr[i] = new Cell(i, A);
-        else     _cell_ptr[i] = new Cell(i, B);
-    }
-    vector<bool> checker;
-    checker.resize(_numNet+1, false);
-    for (int i = 1; i <= _numCell; i+=2) {
-        assert(_cell_ptr[i]->_group == A);
-        for (auto it = _cell_array[i].begin(); it != _cell_array[i].end(); ++it) {
-            checker[*it] = true;
+        if (!_cell_ptr[i]) {
+            cerr << "ID " << i << " is not used" << endl;
+            continue;
         }
+        if (i&1) _cell_ptr[i]->set_group(A);
+        else     _cell_ptr[i]->set_group(B);
     }
-    for (int i = 2; i <= _numCell; i+=2) {
-        assert(_cell_ptr[i]->_group == B);
-        for (auto it = _cell_array[i].begin(); it != _cell_array[i].end(); ++it) {
-            if (checker[*it]) {
-                _cutsize += 1;
-                checker[*it] = false;
+    for (int netID = 1; netID <= _numNet; ++netID) {
+        bool A_check = false;
+        bool B_check = false;
+        for (auto it = _net_array[netID].begin(); it != _net_array[netID].end(); ++it) {
+            if (_cell_ptr[*it]->_group == A) A_check = true;
+            if (_cell_ptr[*it]->_group == B) B_check = true;
+            if (A_check && B_check) {
+                ++_cutsize;
+                break;
             }
         }
     }
@@ -342,8 +344,8 @@ inline void Solver::assign_basecell(Cell* c, Group g) {
 }
 
 bool Solver::net_in_cell_array(int curCellID, int curNetID) {
-    for (auto it = _cell_array[curCellID].begin(); it != _cell_array[curCellID].end(); ++it) {
-        if (*it == curNetID) return true;
+    for (auto it = _net_array[curNetID].begin(); it != _net_array[curNetID].end(); ++it) {
+        if (*it == curCellID) return true;
     }
     return false;
 }
