@@ -9,7 +9,7 @@
 
 using namespace std;
 
-enum Group {  A = 0, B = 1, X = 2};
+enum Group {  A = 0, B = 1, X = 2 };
 
 struct Cell {
     Cell(int id, Group g) : _next(NULL), _prev(NULL), _gain(0), _group(X), _locked(false) { _ID = id; _group = g; }
@@ -87,7 +87,7 @@ public:
 
     Cell* pick() {
         Cell* tmp = _pick_candidate;
-        _pick_candidate = _pick_candidate ? _pick_candidate->_next: _pick_candidate;
+        _pick_candidate = _pick_candidate ? _pick_candidate->_next : _pick_candidate;
         return tmp;
     }
 
@@ -122,7 +122,6 @@ public:
     }
 
     void dumpA(ostream& os) {
-        ::sort(_locked_cells.begin(), _locked_cells.end());
         for (auto it = _locked_cells.begin(); it != _locked_cells.end(); ++it) {
             if ((*it)->_group == B) continue;
             os << 'c' << (*it)->_ID << ' ';

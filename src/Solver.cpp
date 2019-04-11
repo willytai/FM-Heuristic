@@ -13,8 +13,10 @@ void Solver::read(char* filename) {
     cerr << "[constructing Cell array and Net array from " << filename << "]" << endl;
     ifstream file(filename);
     string buff;
+    bool A_check = false;
+    bool B_check = false;
     while (getline(file, buff)) {
-        if (!buff.length()) break;
+        if (!buff.length()) continue;
         if (!_balance_degree) {
             _balance_degree = stof(buff);
             cerr << "\t> setting balance degree to " << _balance_degree << endl;
@@ -25,10 +27,14 @@ void Solver::read(char* filename) {
         int curNetID;
         int curCellID;
         while (ss >> temp) {
-            if (temp == ";") break;
+            if (temp == ";") {
+                if (A_check && B_check) ++_cutsize;
+                break;
+            }
             if (temp == "NET") continue;
             if (temp[0] == 'n') {
                 curNetID = stoi(temp.substr(1,temp.size()-1));
+                A_check = B_check = false;
                 continue;
             }
             if (temp[0] == 'c') curCellID = stoi(temp.substr(1,temp.size()-1));
@@ -47,7 +53,14 @@ void Solver::read(char* filename) {
             // create cell pointers here
             // maybe some ID's are not used
             if (_cell_ptr.size() < _numCell+1) _cell_ptr.resize(_numCell+1, NULL);
-            _cell_ptr[curCellID] = new Cell(curCellID, A);
+            if (curCellID&1) {
+                _cell_ptr[curCellID] = new Cell(curCellID, A);
+                A_check = true;
+            }
+            else {
+                _cell_ptr[curCellID] = new Cell(curCellID, B);
+                B_check = true;
+            }
         }
     }
 
@@ -55,10 +68,14 @@ void Solver::read(char* filename) {
     for (auto it = _cell_array.begin(); it != _cell_array.end(); ++it) {
         if (_Pmax < (*it).size()) _Pmax = (*it).size();
     }
+    
+    cerr << "\t> Number of Cells: " << _numCell << endl;
+    cerr << "\t> Number of Nets:  " << _numNet << endl;
+    cerr << "\t> initial cutsize: " << _cutsize << endl;
 }
 
 void Solver::debug_dump(ostream& os) {
-    this->initPartition();
+    // this->initPartition();
     for (int i = 1; i <= _numCell; ++i) _Bucket.lock_insert(_cell_ptr[i]);
     this->dump(os);
 }
@@ -67,7 +84,7 @@ void Solver::solve() {
     _gain_history.clear();
     _cell_gain_pairs.clear();
     this->construct_balance_criterion();
-    this->initPartition();
+    // this->initPartition();
     this->initBucketList();
     int iteration = 0;
     cerr << "[Solving]" << endl;
@@ -90,7 +107,6 @@ void Solver::construct_balance_criterion() {
 
 void Solver::initPartition() {
     cerr << "[initializing partition and computing original cutsize]" << endl;
-    _cell_ptr.resize(_numCell+1, NULL);
     cerr << "\t> initializing group A and B" << endl;
     for (int i = 1; i <= _numCell; ++i) {
         if (!_cell_ptr[i]) {
