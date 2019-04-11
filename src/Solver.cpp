@@ -1,5 +1,4 @@
 #include "Solver.h"
-#include <cassert>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -52,6 +51,7 @@ void Solver::read(char* filename) {
 
             // create cell pointers here
             // maybe some ID's are not used
+            // initialize partition now
             if (_cell_ptr.size() < _numCell+1) _cell_ptr.resize(_numCell+1, NULL);
             if (curCellID&1) {
                 _cell_ptr[curCellID] = new Cell(curCellID, A);
@@ -74,17 +74,9 @@ void Solver::read(char* filename) {
     cerr << "\t> initial cutsize: " << _cutsize << endl;
 }
 
-void Solver::debug_dump(ostream& os) {
-    // this->initPartition();
-    for (int i = 1; i <= _numCell; ++i) _Bucket.lock_insert(_cell_ptr[i]);
-    this->dump(os);
-}
-
 void Solver::solve() {
-    _gain_history.clear();
     _cell_gain_pairs.clear();
     this->construct_balance_criterion();
-    // this->initPartition();
     this->initBucketList();
     int iteration = 0;
     cerr << "[Solving]" << endl;
@@ -103,32 +95,6 @@ void Solver::construct_balance_criterion() {
     _min_limit = (1 - _balance_degree) / 2 * _numCell;
     _max_limit = (1 + _balance_degree) / 2 * _numCell;
     cerr << "\t> balance range [" << _min_limit << ", " << _max_limit << "]" << endl;
-}
-
-void Solver::initPartition() {
-    cerr << "[initializing partition and computing original cutsize]" << endl;
-    cerr << "\t> initializing group A and B" << endl;
-    for (int i = 1; i <= _numCell; ++i) {
-        if (!_cell_ptr[i]) {
-            cerr << "ID " << i << " is not used" << endl;
-            continue;
-        }
-        if (i&1) _cell_ptr[i]->set_group(A);
-        else     _cell_ptr[i]->set_group(B);
-    }
-    for (int netID = 1; netID <= _numNet; ++netID) {
-        bool A_check = false;
-        bool B_check = false;
-        for (auto it = _net_array[netID].begin(); it != _net_array[netID].end(); ++it) {
-            if (_cell_ptr[*it]->_group == A) A_check = true;
-            if (_cell_ptr[*it]->_group == B) B_check = true;
-            if (A_check && B_check) {
-                ++_cutsize;
-                break;
-            }
-        }
-    }
-    cerr << "\t> initial cutsize: " << _cutsize << endl;
 }
 
 void Solver::initBucketList() {
@@ -190,7 +156,6 @@ void Solver::moveMaxGainCell() {
             this->move_max_gain_pointer();
             candidate = _maxGainPtr->pick();
         }
-        assert(candidate);
         this->assign_basecell(candidate, candidate->_group);
     }
     // remove it from bucket
@@ -281,7 +246,6 @@ bool Solver::compute_max_gain() {
     int gain = 0;
     int max_gain = 0;
     int k = 0;
-    assert(_cell_gain_pairs.size() == _numCell);
     for (unsigned int i = 0; i < _cell_gain_pairs.size(); ++i) {
         gain += _cell_gain_pairs[i].second;
         if (max_gain < gain) {
@@ -289,9 +253,7 @@ bool Solver::compute_max_gain() {
             max_gain = gain;
         }
     }
-    _gain_history.push_back(max_gain);
     if (max_gain > 0) {
-        assert(k < _cell_gain_pairs.size()-1);
         this->update_cutsize(max_gain);
         this->apply_change(k);
         cout << max_gain << endl;
@@ -305,7 +267,6 @@ bool Solver::compute_max_gain() {
 
 void Solver::update_cutsize(const int& gain) {
     _cutsize -= gain;
-    assert(_cutsize >= 0);
 }
 
 void Solver::apply_change(int k) {
@@ -321,14 +282,6 @@ void Solver::apply_change(int k) {
     this->initBucketList();
 }
 
-void Solver::print_hisotry() const {
-    return;
-    // cerr << endl << "[Gain History]" << endl;
-    for (unsigned int i = 0; i < _gain_history.size(); ++i) {
-        // cerr << "\t> Iteration " << i+1 << ", Gain " << _gain_history[i] << endl;
-    }
-}
-
 void Solver::dump(ostream& os) {
     cerr << "[Dumping result]" << endl;
     os << "Cutsize = " << _cutsize << endl;
@@ -340,7 +293,6 @@ void Solver::dump(ostream& os) {
 
 inline void Solver::move_max_gain_pointer() {
     int curGain = _maxGainPtr->Gain();
-    // assert(curGain >= -_Pmax && curGain <= _Pmax);
     while (!_Bucket[--curGain].size()) {}
     _maxGainPtr = &_Bucket[curGain];
     _maxGainPtr->reset_pick_candidate();
@@ -377,4 +329,3 @@ void Solver::debug_net_dist() const {
     }
 }
 #endif
-

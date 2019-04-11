@@ -15,9 +15,7 @@ public:
     void read(char* filename);
     void solve();
     void dump(ostream& os);
-    void debug_dump(ostream& os);
 
-    void initPartition();
     void initBucketList();
     void construct_balance_criterion();
     void moveMaxGainCell();
@@ -28,13 +26,11 @@ public:
     bool update_max_gain_pointer();
     bool compute_max_gain();
     bool balance_checking(Cell* c);
-
+    bool net_in_cell_array(int curCellID, int curNetID);
 
     inline void move_max_gain_pointer();
     inline void update_net_distribution(vector<int>* F, vector<int>* T);
     inline void assign_basecell(Cell* c, Group g);
-
-    bool net_in_cell_array(int curCellID, int curNetID);
 
 #ifdef DEBUG_MODE
     void debug_net_dist() const;
@@ -65,9 +61,6 @@ private:
     int                     _numCell;
     int                     _numNet;
     int                     _cutsize;
-    
-    // dubug
-    vector<int>             _gain_history;
 };
 
 #endif /* SOLVER_H */

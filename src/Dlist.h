@@ -1,7 +1,6 @@
 #ifndef DLIST_H
 #define DLIST_H
 
-#include <cassert>
 #include <iostream>
 #include <climits>
 #include <vector>
@@ -151,8 +150,8 @@ public:
     size_t A_size() const { return _A_size; }
     size_t B_size() const { return _B_size; }
 
-    Dlist& operator[] (int gain) { assert(gain >= -_Pmax && gain <= _Pmax); return _data[gain+_Pmax]; }
-    Dlist operator[] (int gain) const { assert(gain >= -_Pmax && gain <= _Pmax); return _data[gain+_Pmax]; }
+    Dlist& operator[] (int gain) { return _data[gain+_Pmax]; }
+    Dlist operator[] (int gain) const { return _data[gain+_Pmax]; }
 
     // debug functions
     void print() const {

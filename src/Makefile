@@ -20,4 +20,4 @@ all: $(COBJS)
 	@$(CXX) $(CFLAGS) -c -o $@ $<
 
 clean:
-	@rm -f $(COBJS)
+	@rm -f $(COBJS) $(EXEC)
